@@ -95,6 +95,9 @@
                 <button class="icon-btn" onclick="redo()" id="redoBtn" title="Rétablir (Ctrl+Shift+Z)" disabled>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"/></svg>
                 </button>
+                <button class="icon-btn" onclick="openHistoryModal()" title="Historique complet (H)">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+                </button>
                 <div class="toolbar-divider"></div>
                 <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Thème">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -310,6 +313,19 @@
         </div>
     </div>
 </div>
+<!-- MODAL: HISTORY -->
+    <div class="modal" id="historyModal">
+        <div class="modal-card" style="width:420px;max-height:80vh;overflow-y:auto">
+            <div class="modal-header">
+                <div class="modal-icon">↺</div>
+                <h3 class="modal-title">Historique</h3>
+            </div>
+            <div id="historyList"></div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('historyModal')">Fermer</button>
+            </div>
+        </div>
+    </div>
     <!-- MODAL: TIMELINE -->
 <div class="modal" id="timelineModal">
     <div class="modal-card" style="width:500px;max-height:82vh;overflow-y:auto">
@@ -348,8 +364,9 @@
         </div>
         <div class="form-group">
     <label class="form-label">Mes profils d'intervalles</label>
-    <div id="settingsProfilesList" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px"></div>
-    <button class="interval-add-btn" style="border-style:dashed;color:var(--accent);border-color:rgba(107,140,255,0.4);width:100%;display:flex;align-items:center;justify-content:center;gap:5px" onclick="showSaveProfilePopup()">+ Sauvegarder les intervalles ci-dessous comme profil</button>
+    <div id="settingsProfilesList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+    <button class="interval-add-btn" style="border-style:dashed;color:var(--accent);border-color:rgba(107,140,255,0.4);width:100%;display:flex;align-items:center;justify-content:center;gap:5px" onclick="openProfileEditor()">+ Nouveau profil</button>
+    <span class="form-hint">Un profil est indépendant des intervalles par défaut ci-dessous. Applique-le sur un cours via les boutons au-dessus des intervalles, dans la modale de création/édition.</span>
 </div>
 <div class="form-group">
     <label class="form-label">Intervalles par défaut</label>

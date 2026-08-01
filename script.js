@@ -171,6 +171,25 @@ const State = {
         .task-link-btn { font-size:11px;text-decoration:none;opacity:0.45;transition:opacity 0.15s;line-height:1;cursor:pointer; }
         .task-link-btn:hover { opacity:1; }
         #sidebarHandle:hover, #sidebarHandle:active { background: var(--accent); opacity: 0.7; width: 4px; }
+        .profile-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 10px; background: var(--surface-2);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+        }
+        .profile-row-name { font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; color: var(--text); flex-shrink: 0; }
+        .profile-row-preview { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .history-row {
+            display: flex; align-items: center; gap: 9px;
+            padding: 9px 10px; border-radius: var(--radius-sm);
+            cursor: pointer; transition: background 0.12s; margin-bottom: 2px;
+        }
+        .history-row:hover { background: var(--surface-2); }
+        .history-row.current { background: var(--accent-glow); box-shadow: inset 2px 0 0 var(--accent); }
+        .history-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+        .history-row.current .history-dot { background: var(--accent); }
+        .history-desc { flex: 1; font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .history-row.current .history-desc { color: var(--text); font-weight: 600; }
+        .history-time { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); flex-shrink: 0; }
     `;
     
     document.head.appendChild(s);
@@ -542,7 +561,7 @@ function addToHistory(description) {
         State.history = State.history.slice(0, State.historyIndex + 1);
     }
     State.history.push({ description, state: deepClone(State.data), dayOrders: deepClone(State.dayOrders), timestamp: Date.now() });
-    if (State.history.length > 50) State.history.shift();
+    if (State.history.length > 100) State.history.shift();
     else State.historyIndex++;
     updateUndoRedoButtons();
 }
@@ -572,12 +591,50 @@ function redo() {
 function updateUndoRedoButtons() {
     const u = document.getElementById('undoBtn');
     const r = document.getElementById('redoBtn');
-    if (u) u.disabled = State.historyIndex <= 0;
-    if (r) r.disabled = State.historyIndex >= State.history.length - 1;
+    if (u) {
+        u.disabled = State.historyIndex <= 0;
+        const act = State.history[State.historyIndex];
+        u.title = (act && State.historyIndex > 0) ? `Annuler : ${act.description} (Ctrl+Z)` : 'Annuler (Ctrl+Z)';
+    }
+    if (r) {
+        r.disabled = State.historyIndex >= State.history.length - 1;
+        const act = State.history[State.historyIndex + 1];
+        r.title = act ? `Rétablir : ${act.description} (Ctrl+Shift+Z)` : 'Rétablir (Ctrl+Shift+Z)';
+    }
+}
+
+function openHistoryModal() {
+    const modal = document.getElementById('historyModal');
+    const list  = document.getElementById('historyList');
+    if (!modal || !list) return;
+    list.innerHTML = '';
+    for (let i = State.history.length - 1; i >= 0; i--) {
+        const snap = State.history[i];
+        const isCurrent = i === State.historyIndex;
+        const row = el('div', 'history-row' + (isCurrent ? ' current' : ''));
+        const time = new Date(snap.timestamp).toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        row.innerHTML = `<span class="history-dot"></span><span class="history-desc">${escHtml(snap.description)}</span><span class="history-time">${time}</span>`;
+        row.onclick = () => jumpToHistory(i);
+        list.appendChild(row);
+    }
+    modal.classList.add('open');
+}
+
+function jumpToHistory(index) {
+    if (index < 0 || index >= State.history.length || index === State.historyIndex) { closeModal('historyModal'); return; }
+    State.historyIndex = index;
+    const snap = State.history[index];
+    State.data      = deepClone(snap.state);
+    State.dayOrders = deepClone(snap.dayOrders || {});
+    localStorage.setItem('fififi_dayOrders', JSON.stringify(State.dayOrders));
+    save({ history: false });
+    closeModal('historyModal');
+    toast('→ ' + snap.description);
 }
 
 let _ctxMenu = null;
 let _ankiDismiss = null;
+let _ankiActiveTask = null;
 let _navDragTimer = null;
 function getCtxMenu() {
     if (!_ctxMenu) {
@@ -610,6 +667,7 @@ function showContextMenu(e, node) {
         menu.appendChild(sep);
         menu.appendChild(ctxItem('✦', 'Ajouter un cours', () => addCourse(node.id)));
         menu.appendChild(ctxItem('▣', 'Ajouter un sous-dossier', () => addFolder(node.id)));
+        menu.appendChild(ctxItem('🎨', 'Couleurs aléatoires (enfants)', () => randomizeChildColors(node.id)));
         menu.appendChild(el('div', 'ctx-sep'));
         const _folderParent = findParent(State.data, node.id);
         if (_folderParent) menu.appendChild(ctxItem('↑', 'Extraire du dossier parent', () => {
@@ -994,7 +1052,7 @@ function createDayColumn(d, ds, isToday, tasks) {
                 }
             } else if (State._pendingDayOrder && State._pendingDayOrder.ds === ds) {
                 document.querySelectorAll('.task-placeholder').forEach(p => p.remove());
-                addToHistory('Ordre manuel mis à jour');
+                addToHistory(`Ordre du ${ds} mis à jour`);
                 State.dayOrders[ds] = State._pendingDayOrder.order;
                 State._pendingDayOrder = null;
                 save();
@@ -1188,7 +1246,7 @@ card.ondrop = (e) => {
     const di = order.indexOf(dropKey);
     if (di === -1) return;
     order.splice(before ? di : di + 1, 0, dragKey);
-    addToHistory('Ordre manuel mis à jour');
+    addToHistory(`Ordre du ${ds} mis à jour`);
     State.dayOrders[ds] = order;
     State.draggedTask = null;
     save();
@@ -1199,7 +1257,16 @@ card.ondrop = (e) => {
     });
 };
     card.onclick = () => {
-        if (document.querySelector('.anki-rating')) return;
+        const ankiPopup = document.querySelector('.anki-rating');
+        if (ankiPopup) {
+            if (_ankiActiveTask && _ankiActiveTask.id === t.id && _ankiActiveTask.jVal === t.jVal) {
+                ankiPopup.remove();
+                if (_ankiDismiss) { document.removeEventListener('click', _ankiDismiss); _ankiDismiss = null; }
+                _ankiActiveTask = null;
+                toggleTask(t.id, t.jVal, card);
+            }
+            return;
+        }
         toggleTask(t.id, t.jVal, card);
     };
     card.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); showTaskCtxMenu(e, t); };
@@ -1285,6 +1352,7 @@ function toggleTask(courseId, jVal, cardEl) {
 
     const idx    = course.doneTasks.indexOf(jVal);
     const isDone = idx === -1;
+    const actualJVal = (course.customIntervals && course.customIntervals[jVal] !== undefined) ? course.customIntervals[jVal] : jVal;
 
     if (isDone) {
         course.doneTasks.push(jVal);
@@ -1318,13 +1386,13 @@ function toggleTask(courseId, jVal, cardEl) {
     }
 
     if (!isDone) toast('○ Remis à faire');
-    clearTimeout(_toggleUndoTimer);
-    _toggleUndoTimer = setTimeout(() => addToHistory('Révisions mises à jour'), 800);
+    addToHistory(isDone ? `"${course.name}" — J${actualJVal} validé` : `"${course.name}" — J${actualJVal} remis à faire`);
     saveQuiet();
 }
 function showAnkiRating(courseId, jVal, anchorEl, onDone) {
     document.querySelector('.anki-rating')?.remove();
     if (_ankiDismiss) { document.removeEventListener('click', _ankiDismiss); _ankiDismiss = null; }
+    _ankiActiveTask = { id: courseId, jVal };
 
     const div  = el('div', 'anki-rating');
     const lbl  = el('div', 'anki-rating-label');
@@ -1336,9 +1404,16 @@ function showAnkiRating(courseId, jVal, anchorEl, onDone) {
         b.dataset.r = r; b.textContent = r; b.title = emo[r];
         b.onmouseup = (e) => { e.preventDefault(); e.stopPropagation();
             const course = findNode(State.data, courseId);
-            if (course) { if (!course.ratings) course.ratings = {}; course.ratings[jVal] = r; saveQuiet(); }
+            if (course) {
+                if (!course.ratings) course.ratings = {};
+                course.ratings[jVal] = r;
+                const actualJVal = (course.customIntervals && course.customIntervals[jVal] !== undefined) ? course.customIntervals[jVal] : jVal;
+                addToHistory(`"${course.name}" — J${actualJVal} noté ${r}/5`);
+                saveQuiet();
+            }
             div.remove();
             if (_ankiDismiss) { document.removeEventListener('click', _ankiDismiss); _ankiDismiss = null; }
+            _ankiActiveTask = null;
             toast(`${emo[r]}  Qualité ${r}/5`, r >= 4 ? 'success' : '');
             if (onDone) onDone();
         };
@@ -1372,6 +1447,7 @@ function showAnkiRating(courseId, jVal, anchorEl, onDone) {
                 div.remove();
                 document.removeEventListener('click', _ankiDismiss);
                 _ankiDismiss = null;
+                _ankiActiveTask = null;
                 if (onDone) onDone();
             }
         };
@@ -1517,7 +1593,7 @@ function shiftDate(courseId, days) {
     const d = new Date(course.j0 + 'T00:00:00');
     d.setDate(d.getDate() + days);
     course.j0 = dateStr(d);
-    addToHistory(`J0 décalé de ${days}j`);
+    addToHistory(`"${course.name}" — J0 décalé de ${days > 0 ? '+' : ''}${days}j`);
     save();
     toast(`J0 → ${days > 0 ? '+' : ''}${days}j`, 'success');
 }
@@ -1530,7 +1606,7 @@ function shiftSpecificTask(courseId, jVal, days) {
     const newInterval = current + days;
     if (newInterval < 0) { toast('Impossible avant le J0', 'error'); return; }
     course.customIntervals[jVal] = newInterval;
-    addToHistory(`J${current} → J${newInterval}`);
+    addToHistory(`"${course.name}" — J${current} → J${newInterval}`);
     save();
     toast(`J${current} → J${newInterval}`, 'success');
 }
@@ -1674,10 +1750,9 @@ function openModal(id) {
 
     if (id === 'courseModal') {
         const _dp = document.getElementById('courseDate');
-        _dp.value = dateStr(new Date());
+        _dp.value = '';
         initDatePicker('courseDate');
         if (_dp._dpRefresh) _dp._dpRefresh();
-        setTimeout(() => { _dp.value = dateStr(new Date()); if (_dp._dpRefresh) _dp._dpRefresh(); }, 30);
         renderPresets('course');
         renderIntervalChips('courseIntervalChips', 'courseIntervals');
         setTimeout(() => document.getElementById('courseName').focus(), 50);
@@ -1759,6 +1834,14 @@ function saveUserProfile(name, intervals) {
 function deleteUserProfile(name) {
     localStorage.setItem('fififi_profiles', JSON.stringify(getUserProfiles().filter(p => p.name !== name)));
 }
+function updateUserProfile(oldName, newName, intervals) {
+    const profiles = getUserProfiles();
+    const idx = profiles.findIndex(p => p.name === oldName);
+    if (idx === -1) return false;
+    profiles[idx] = { name: newName, intervals };
+    localStorage.setItem('fififi_profiles', JSON.stringify(profiles));
+    return true;
+}
 function applyPreset(presetName, prefix) {
     const profile = getUserProfiles().find(p => p.name === presetName);
     if (!profile) return;
@@ -1805,6 +1888,44 @@ function syncCourseColors() {
     toast('Couleurs synchronisées avec les dossiers ✓', 'success');
 }
 
+function hslToHex(h, s, l) {
+    h = ((h % 360) + 360) % 360;
+    s /= 100; l /= 100;
+    const k = n => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    const toHex = x => Math.round(255 * x).toString(16).padStart(2, '0');
+    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+
+function generateDistinctColors(n) {
+    if (n <= 0) return [];
+    const step = 360 / n;
+    const startHue = Math.random() * 360;
+    const colors = [];
+    for (let i = 0; i < n; i++) {
+        const jitter = (Math.random() - 0.5) * step * 0.3;
+        const hue = startHue + i * step + jitter;
+        const sat = 62 + Math.random() * 18;
+        const light = 54 + Math.random() * 10;
+        colors.push(hslToHex(hue, sat, light));
+    }
+    return colors;
+}
+
+function randomizeChildColors(folderId) {
+    const folder = findNode(State.data, folderId);
+    if (!folder || !folder.children || !folder.children.length) {
+        toast("Ce dossier n'a pas de sous-éléments", 'error');
+        return;
+    }
+    const colors = generateDistinctColors(folder.children.length);
+    folder.children.forEach((child, i) => { child.color = colors[i]; });
+    addToHistory(`Couleurs aléatoires pour les enfants de "${folder.name}"`);
+    save();
+    toast('Couleurs randomisées ✓', 'success');
+}
+
 let _settingsIntervals = new Set();
 
 function openSettings() {
@@ -1837,69 +1958,154 @@ function renderSettingsPresets() {
         return;
     }
     profiles.forEach(profile => {
-        const wrap = el('div');
-        wrap.style.cssText = 'display:inline-flex;align-items:center;margin:0 4px 4px 0;';
-        const btn = el('button', 'interval-chip');
-        btn.textContent = profile.name;
-        btn.title = profile.intervals.map(v => 'J'+v).join(', ');
-        btn.style.borderRadius = '20px 0 0 20px';
-        btn.onclick = e => { e.preventDefault(); _settingsIntervals = new Set(profile.intervals); renderSettingsChips(); };
-        const del = el('button', 'interval-chip');
-        del.textContent = '×';
-        del.style.cssText = 'padding:5px 8px;border-left:none;border-radius:0 20px 20px 0;color:var(--danger);border-color:rgba(224,85,112,0.3);';
-        del.onclick = e => { e.preventDefault(); deleteUserProfile(profile.name); renderSettingsPresets(); };
-        wrap.appendChild(btn); wrap.appendChild(del);
-        row.appendChild(wrap);
+        const card = el('div', 'profile-row');
+        card.innerHTML = `
+            <span class="profile-row-name">${escHtml(profile.name)}</span>
+            <span class="profile-row-preview">${profile.intervals.slice().sort((a,b)=>a-b).map(v => 'J'+v).join(' · ')}</span>
+        `;
+        const editBtn = el('button', 'tree-node-edit-btn');
+        editBtn.textContent = '✎';
+        editBtn.title = 'Éditer';
+        editBtn.style.opacity = '1';
+        editBtn.onclick = () => openProfileEditor(profile.name);
+        const delBtn = el('button', 'tree-node-edit-btn');
+        delBtn.textContent = '✕';
+        delBtn.title = 'Supprimer';
+        delBtn.style.opacity = '1';
+        delBtn.style.color = 'var(--danger)';
+        delBtn.onclick = async () => {
+            if (await customConfirm(`Supprimer le profil "${profile.name}" ?`, 'Supprimer le profil')) {
+                deleteUserProfile(profile.name);
+                renderSettingsPresets();
+                toast('Profil supprimé', 'success');
+            }
+        };
+        card.appendChild(editBtn);
+        card.appendChild(delBtn);
+        row.appendChild(card);
     });
 }
 
-function showSaveProfilePopup() {
+function openProfileEditor(profileName = null) {
+    const existing = profileName ? getUserProfiles().find(p => p.name === profileName) : null;
+    let workingSet = new Set(existing ? existing.intervals : []);
+
     const overlay = el('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(5,7,11,0.85);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;animation:modal-bg-in 0.2s ease;';
 
     const box = el('div');
-    box.style.cssText = 'background:var(--surface);border:1px solid var(--border-2);border-radius:var(--radius-lg);padding:24px;width:340px;box-shadow:0 32px 64px rgba(0,0,0,0.6);animation:modal-in 0.3s var(--ease-spring);position:relative;';
+    box.style.cssText = 'background:var(--surface);border:1px solid var(--border-2);border-radius:var(--radius-lg);padding:24px;width:380px;max-width:92vw;box-shadow:0 32px 64px rgba(0,0,0,0.6);animation:modal-in 0.3s var(--ease-spring);position:relative;';
     box.innerHTML = `
         <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(to right,transparent,var(--accent),transparent);border-radius:var(--radius-lg) var(--radius-lg) 0 0;opacity:0.5;"></div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
             <span style="font-size:18px;color:var(--accent)">◈</span>
-            <h3 style="font-family:var(--font-ui);font-size:16px;font-weight:700;color:var(--text);letter-spacing:-0.02em;">Nouveau profil</h3>
+            <h3 style="font-family:var(--font-ui);font-size:16px;font-weight:700;color:var(--text);letter-spacing:-0.02em;">${existing ? 'Éditer le profil' : 'Nouveau profil'}</h3>
         </div>
-        <div style="margin-bottom:18px;">
+        <div style="margin-bottom:16px;">
             <label style="display:block;font-family:var(--font-ui);font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:7px;">Nom du profil</label>
-            <input id="profileNameInput" class="form-input" placeholder="Ex: Médecine intensif…" style="width:100%;">
+            <input id="peNameInput" class="form-input" placeholder="Ex: Médecine intensif…" value="${existing ? escHtml(existing.name) : ''}" style="width:100%;">
         </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
-            <button class="btn btn-ghost" id="profileCancelBtn">Annuler</button>
-            <button class="btn btn-primary" id="profileSaveBtn"><span class="btn-icon">✦</span>Sauvegarder</button>
+        <div style="margin-bottom:8px;">
+            <label style="display:block;font-family:var(--font-ui);font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:7px;">Intervalles (jours)</label>
+            <div id="pePresetsRow" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;"></div>
+            <div id="peActiveList" class="interval-active-list"></div>
+            <div class="interval-add-row" style="margin-top:8px;">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" id="peCustomInput" class="interval-add-input" placeholder="J?">
+                <button class="interval-add-btn" id="peAddBtn">+ Ajouter</button>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:space-between;padding-top:16px;margin-top:12px;border-top:1px solid var(--border);">
+            <div>${existing ? `<button class="btn btn-danger" id="peDeleteBtn">Supprimer</button>` : ''}</div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-ghost" id="peCancelBtn">Annuler</button>
+                <button class="btn btn-primary" id="peSaveBtn"><span class="btn-icon">✦</span>Sauvegarder</button>
+            </div>
         </div>
     `;
     overlay.appendChild(box);
     document.body.appendChild(overlay);
 
-    const input = box.querySelector('#profileNameInput');
-    const saveBtn = box.querySelector('#profileSaveBtn');
-    const cancelBtn = box.querySelector('#profileCancelBtn');
+    function renderPePresets() {
+        const rowEl = box.querySelector('#pePresetsRow');
+        rowEl.innerHTML = '';
+        PRESET_INTERVALS.forEach(val => {
+            const chip = el('button', 'interval-chip' + (workingSet.has(val) ? ' active' : ''));
+            chip.type = 'button';
+            chip.textContent = 'J' + val;
+            chip.onclick = () => {
+                if (workingSet.has(val)) workingSet.delete(val); else workingSet.add(val);
+                renderPePresets(); renderPeActive();
+            };
+            rowEl.appendChild(chip);
+        });
+    }
+    function renderPeActive() {
+        const list = box.querySelector('#peActiveList');
+        list.innerHTML = '';
+        [...workingSet].sort((a,b) => a-b).forEach(val => {
+            const chip = el('div', 'interval-chip-active');
+            chip.innerHTML = `J${val}`;
+            chip.title = 'Cliquer pour retirer';
+            chip.onclick = () => { workingSet.delete(val); renderPePresets(); renderPeActive(); };
+            list.appendChild(chip);
+        });
+    }
+    renderPePresets(); renderPeActive();
 
-    setTimeout(() => input.focus(), 50);
+    const nameInput = box.querySelector('#peNameInput');
+    const customInput = box.querySelector('#peCustomInput');
+    box.querySelector('#peAddBtn').onclick = () => {
+        const val = extractInt(customInput.value);
+        if (isNaN(val) || val < 0 || val > 999) return;
+        workingSet.add(val);
+        customInput.value = '';
+        renderPePresets(); renderPeActive();
+    };
+    customInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); box.querySelector('#peAddBtn').click(); }
+    });
 
     const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
-    const confirm = () => {
-        const name = input.value.trim();
-        if (!name) { input.focus(); input.style.borderColor = 'var(--danger)'; return; }
-        saveUserProfile(name, [..._settingsIntervals].sort((a,b) => a-b));
-        renderSettingsPresets();
-        toast('"' + name + '" sauvegardé', 'success');
-        close();
-    };
-    const onKey = e => {
-        if (e.key === 'Enter') { e.preventDefault(); confirm(); }
-        if (e.key === 'Escape') close();
-    };
+    const onKey = e => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey);
-    saveBtn.onclick = confirm;
-    cancelBtn.onclick = close;
     overlay.onclick = e => { if (e.target === overlay) close(); };
+    box.querySelector('#peCancelBtn').onclick = close;
+
+    if (existing) {
+        box.querySelector('#peDeleteBtn').onclick = async () => {
+            if (await customConfirm(`Supprimer le profil "${existing.name}" ?`, 'Supprimer le profil')) {
+                deleteUserProfile(existing.name);
+                toast('Profil supprimé', 'success');
+                close();
+                renderSettingsPresets();
+            }
+        };
+    }
+
+    box.querySelector('#peSaveBtn').onclick = async () => {
+        const name = nameInput.value.trim();
+        if (!name) { nameInput.focus(); nameInput.style.borderColor = 'var(--danger)'; return; }
+        if (workingSet.size === 0) { toast('Au moins un intervalle requis', 'error'); return; }
+        const intervals = [...workingSet].sort((a,b) => a-b);
+
+        const collision = getUserProfiles().find(p => p.name === name && (!existing || p.name !== existing.name));
+        if (collision) {
+            const ok = await customConfirm(`Un profil nommé "${name}" existe déjà. Le remplacer ?`, 'Profil existant', 'Remplacer', 'Annuler', 'btn-primary');
+            if (!ok) return;
+            deleteUserProfile(collision.name);
+        }
+
+        if (existing) {
+            updateUserProfile(existing.name, name, intervals);
+        } else {
+            saveUserProfile(name, intervals);
+        }
+        toast(existing ? 'Profil mis à jour' : '"' + name + '" sauvegardé', 'success');
+        close();
+        renderSettingsPresets();
+    };
+
+    setTimeout(() => nameInput.focus(), 50);
 }
 
 function renderSettingsChips() {
@@ -1970,6 +2176,7 @@ function bulkColor() {
     input.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
     document.body.appendChild(input);
     input.click();
+    const n = State.selectedIds.size;
     input.oninput = () => {
         const color = input.value;
         State.selectedIds.forEach(id => {
@@ -1979,7 +2186,10 @@ function bulkColor() {
         save();
         toast('Couleurs mises à jour', 'success');
     };
-    input.onchange = () => { input.remove(); };
+    input.onchange = () => {
+        addToHistory(`${n} cours recolorés`);
+        input.remove();
+    };
 }
 
 function bulkExport() {
@@ -2027,7 +2237,7 @@ function addCourse(parentId = null) {
     _activeIntervals = new Set(State.defaultIntervals);
     document.getElementById('courseName').value = '';
     const _di = document.getElementById('courseDate');
-    _di.value = dateStr(new Date());
+    _di.value = '';
     openModal('courseModal');
     setTimeout(() => { if (_di._dpRefresh) _di._dpRefresh(); }, 0);
 }
@@ -2086,7 +2296,7 @@ function saveEditFolder() {
     const colorChanged = folder.color !== State.selectedColor;
     folder.color = State.selectedColor;
     closeModal('editFolderModal');
-    addToHistory('Dossier modifié');
+    addToHistory(`Dossier "${folder.name}" modifié`);
     save();
     if (colorChanged) {
         if (!folderHasCourses(folder)) { toast('Dossier modifié', 'success'); return; }
@@ -2170,7 +2380,7 @@ function saveEditCourse() {
     course.link      = document.getElementById('editCourseLink').value.trim() || null;
     course.notes     = document.getElementById('editCourseNotes').value.trim() || null;
     closeModal('editCourseModal');
-    addToHistory('Cours modifié');
+    addToHistory(`Cours "${course.name}" modifié`);
     save();
     toast('Modifié', 'success');
 }
@@ -2407,6 +2617,7 @@ document.getElementById('importFile').onchange = function (e) {
             const data  = JSON.parse(evt.target.result);
             const count = mergeData(data);
             if (count > 0) {
+                addToHistory(`${count} élément(s) importé(s)`);
                 save();
                 toast(`${count} élément(s) importé(s)`, 'success');
             } else {
@@ -2468,8 +2679,9 @@ function save(opts = {}) {
             localStorage.setItem(STORAGE_KEY + '_expanded', JSON.stringify(State.expandedIds));
             localStorage.setItem('fififi_dayOrders', JSON.stringify(State.dayOrders));
             if (history) {
-                const trimmed = State.history.slice(-10);
-                const trimmedIndex = Math.min(State.historyIndex, trimmed.length - 1);
+                const trimmed = State.history.slice(-60);
+                const dropped = State.history.length - trimmed.length;
+                const trimmedIndex = Math.max(-1, Math.min(State.historyIndex - dropped, trimmed.length - 1));
                 localStorage.setItem(STORAGE_KEY + '_history', JSON.stringify({
                     history: trimmed,
                     index:   trimmedIndex,
@@ -2550,6 +2762,7 @@ document.addEventListener('keydown', e => {
         if (e.key === 'ArrowRight')          { nav(1);       return; }
         if (e.key === 'b' || e.key === 'B') { toggleSidebar(); return; }
         if (e.key === 's' || e.key === 'S') { openStats();   return; }
+        if (e.key === 'h' || e.key === 'H') { openHistoryModal(); return; }
     }
 
     if (e.key === 'Escape') {
@@ -2601,7 +2814,7 @@ function checkAllDay(tasks) {
             if (!course.doneTasks) course.doneTasks = [];
             if (!course.doneTasks.includes(t.jVal)) course.doneTasks.push(t.jVal);
         });
-        addToHistory(`${undone.length} révision(s) cochée(s)`);
+        addToHistory(`${undone.length} révision(s) cochée(s) — ${tasks[0]?.dateStr || ''}`);
         save();
         toast(`${undone.length} révision(s) cochée(s) ✓`, 'success');
     } else {
@@ -2610,7 +2823,7 @@ function checkAllDay(tasks) {
             if (!course || !course.doneTasks) return;
             course.doneTasks = course.doneTasks.filter(j => j !== t.jVal);
         });
-        addToHistory(`${tasks.length} révision(s) décochée(s)`);
+        addToHistory(`${tasks.length} révision(s) décochée(s) — ${tasks[0]?.dateStr || ''}`);
         save();
         toast(`${tasks.length} révision(s) décochée(s)`, 'success');
     }
