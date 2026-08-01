@@ -143,6 +143,18 @@ body::before {
     margin-left: calc(-1 * var(--sidebar-w));
 }
 
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 7, 11, 0.6);
+    backdrop-filter: blur(2px);
+    z-index: 99;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
 .sidebar-header {
     height: var(--topbar-h);
     padding: 0 16px;
@@ -1100,10 +1112,31 @@ input[type="date"].form-input {
 
 @media (max-width: 900px) {
     .sidebar {
-        position: absolute;
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
         height: 100%;
+        width: min(300px, 85vw);
         z-index: 100;
         box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .sidebar.collapsed {
+        margin-left: -100vw;
+    }
+
+    #sidebarHandle {
+        display: none;
+    }
+
+    .sidebar-backdrop {
+        display: block;
+    }
+
+    .sidebar:not(.collapsed) ~ .sidebar-backdrop {
+        opacity: 1;
+        pointer-events: auto;
     }
 
     .calendar.week {

@@ -3058,6 +3058,11 @@ function initApp() {
     localStorage.setItem('fififi_dayOrders', JSON.stringify(State.dayOrders));
     State.currentMonday = getMonday(new Date());
 
+    if (window.innerWidth <= 900) {
+        State.sidebarCollapsed = true;
+        document.querySelector('.sidebar')?.classList.add('collapsed');
+    }
+
     const _savedView = localStorage.getItem('fififi_view');
     if (_savedView) {
         State.currentView = _savedView;
