@@ -8,11 +8,29 @@ const DEFAULT_INTERVALS_CLOUD = [0, 1, 3, 7, 14, 30];
 const Cloud = (() => {
     let _user = null;
     let _listeners = [];
+    let _statusListeners = [];
+    let _status = 'idle'; // 'idle' | 'saving' | 'saved' | 'error'
     let _saveTimer = null;
+    const _nodeTimers = new Map();
 
     function getUser() { return _user; }
     function onAuthChange(cb) { _listeners.push(cb); }
     function _notify() { _listeners.forEach(cb => cb(_user)); }
+
+    function getStatus() { return _status; }
+    function onStatusChange(cb) { _statusListeners.push(cb); cb(_status); }
+    function _setStatus(s) { _status = s; _statusListeners.forEach(cb => cb(s)); }
+
+    async function _supaCall(fn, attempts = 3) {
+        let lastError = null;
+        for (let i = 0; i < attempts; i++) {
+            const { data, error } = await fn();
+            if (!error) return { data, error: null };
+            lastError = error;
+            if (i < attempts - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
+        }
+        return { data: null, error: lastError };
+    }
 
     async function init() {
         const { data } = await sb.auth.getSession();
@@ -61,6 +79,25 @@ const Cloud = (() => {
         return rows;
     }
 
+    function _rowFromNode(node, parentId, userId, position) {
+        const row = {
+            id: node.id, user_id: userId, parent_id: parentId,
+            type: node.type, name: node.name, color: node.color || null,
+            updated_at: new Date().toISOString(),
+        };
+        if (typeof position === 'number' && position >= 0) row.position = position;
+        if (node.type === 'course') {
+            row.link = node.link || null;
+            row.notes = node.notes || null;
+            row.j0 = node.j0 || null;
+            row.intervals = node.intervals || DEFAULT_INTERVALS_CLOUD;
+            row.custom_intervals = node.customIntervals || {};
+            row.done_tasks = node.doneTasks || [];
+            row.ratings = node.ratings || {};
+        }
+        return row;
+    }
+
     function buildTree(rows) {
         const nodeMap = new Map();
         rows.forEach(r => {
@@ -103,28 +140,59 @@ const Cloud = (() => {
 
     async function _pushTree(tree) {
         if (!_user) return;
+        _setStatus('saving');
         const rows = flattenTree(tree, null, _user.id);
 
-        const { data: existing, error: exErr } = await sb.from('j_items').select('id').eq('user_id', _user.id);
-        if (exErr) { console.error('Cloud._pushTree (select)', exErr); return; }
+        const { data: existing, error: exErr } = await _supaCall(() => sb.from('j_items').select('id').eq('user_id', _user.id));
+        if (exErr) { console.error('Cloud._pushTree (select)', exErr); _setStatus('error'); toast('Erreur de synchronisation cloud', 'error'); return; }
 
         const existingIds = new Set((existing || []).map(r => r.id));
         const newIds = new Set(rows.map(r => r.id));
         const toDelete = [...existingIds].filter(id => !newIds.has(id));
 
         if (rows.length) {
-            const { error: upErr } = await sb.from('j_items').upsert(rows, { onConflict: 'id' });
-            if (upErr) { console.error('Cloud._pushTree (upsert)', upErr); toast('Erreur de sauvegarde cloud', 'error'); return; }
+            const { error: upErr } = await _supaCall(() => sb.from('j_items').upsert(rows, { onConflict: 'id' }));
+            if (upErr) { console.error('Cloud._pushTree (upsert)', upErr); _setStatus('error'); toast('Erreur de synchronisation cloud', 'error'); return; }
         }
         if (toDelete.length) {
-            const { error: delErr } = await sb.from('j_items').delete().in('id', toDelete);
-            if (delErr) console.error('Cloud._pushTree (delete)', delErr);
+            const { error: delErr } = await _supaCall(() => sb.from('j_items').delete().in('id', toDelete));
+            if (delErr) { console.error('Cloud._pushTree (delete)', delErr); _setStatus('error'); toast('Erreur de synchronisation cloud', 'error'); return; }
         }
+        _setStatus('saved');
     }
 
     function saveTree(tree) {
         clearTimeout(_saveTimer);
         _saveTimer = setTimeout(() => { _pushTree(tree); }, 400);
+    }
+
+    async function _pushNode(node, parentId, position) {
+        if (!_user) return;
+        _setStatus('saving');
+        const row = _rowFromNode(node, parentId, _user.id, position);
+        const { error } = await _supaCall(() => sb.from('j_items').upsert([row], { onConflict: 'id' }));
+        if (error) {
+            console.error('Cloud.saveNode', error);
+            _setStatus('error');
+            toast('Erreur de synchronisation cloud', 'error');
+        } else {
+            _setStatus('saved');
+        }
+    }
+
+    // Push ciblé d'un seul cours (utilisé pour les coches/notes de révision,
+    // pour éviter de renvoyer tout l'arbre à chaque clic).
+    function saveNode(node, parentId, position) {
+        if (!_user || !node) return;
+        clearTimeout(_nodeTimers.get(node.id));
+        _nodeTimers.set(node.id, setTimeout(() => {
+            _nodeTimers.delete(node.id);
+            _pushNode(node, parentId, position);
+        }, 400));
+    }
+
+    function retry() {
+        if (typeof State !== 'undefined' && State.data) saveTree(State.data);
     }
 
     async function migrateLocalIfNeeded(user) {
@@ -147,5 +215,9 @@ const Cloud = (() => {
         toast('Données locales migrées vers le cloud ✓', 'success');
     }
 
-    return { init, getUser, onAuthChange, signInWithDiscord, signOut, loadTree, saveTree, migrateLocalIfNeeded };
+    return {
+        init, getUser, onAuthChange, signInWithDiscord, signOut,
+        loadTree, saveTree, saveNode, migrateLocalIfNeeded,
+        getStatus, onStatusChange, retry,
+    };
 })();

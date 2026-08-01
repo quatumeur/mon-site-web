@@ -1163,7 +1163,7 @@ function createTaskCard(t, animIndex = 0, ds = null, dayTasks = []) {
 const _isJustDropped = State._lastDropped === _taskKey;
 if (_isJustDropped) State._lastDropped = null;
 const card = el('div', 'task-card' + (t.done ? ' done' : '') + (overdue ? ' overdue' : '') + (_isJustDropped ? ' just-dropped' : ''));
-    card.dataset.origIndex = animIndex;
+    card.dataset.taskKey = _taskKey;
     
     card.draggable = true;
 
@@ -1387,7 +1387,7 @@ function toggleTask(courseId, jVal, cardEl) {
 
     if (!isDone) toast('○ Remis à faire');
     addToHistory(isDone ? `"${course.name}" — J${actualJVal} validé` : `"${course.name}" — J${actualJVal} remis à faire`);
-    saveQuiet();
+    saveQuiet(courseId);
 }
 function showAnkiRating(courseId, jVal, anchorEl, onDone) {
     document.querySelector('.anki-rating')?.remove();
@@ -1409,7 +1409,7 @@ function showAnkiRating(courseId, jVal, anchorEl, onDone) {
                 course.ratings[jVal] = r;
                 const actualJVal = (course.customIntervals && course.customIntervals[jVal] !== undefined) ? course.customIntervals[jVal] : jVal;
                 addToHistory(`"${course.name}" — J${actualJVal} noté ${r}/5`);
-                saveQuiet();
+                saveQuiet(courseId);
             }
             div.remove();
             if (_ankiDismiss) { document.removeEventListener('click', _ankiDismiss); _ankiDismiss = null; }
@@ -1558,8 +1558,10 @@ function showTaskCtxMenu(e, t) {
     menu.appendChild(ctxItem(t.done ? '○' : '✓', t.done ? 'Marquer à faire' : 'Marquer terminé', () => {
         const wasDone = t.done;
         toggleTask(t.id, t.jVal, null);
-        toast(wasDone ? '○ Remis à faire' : '✓ Révision validée', wasDone ? '' : 'success');
-        if (!wasDone) setTimeout(() => showAnkiRating(t.id, t.jVal, _pos), 250);
+        if (!wasDone) {
+            toast('✓ Révision validée', 'success');
+            setTimeout(() => showAnkiRating(t.id, t.jVal, _pos), 250);
+        }
         renderCalendar();
     }));
     menu.appendChild(el('div', 'ctx-sep'));
@@ -2631,12 +2633,20 @@ document.getElementById('importFile').onchange = function (e) {
     e.target.value = '';
 };
 
-function saveQuiet() {
+function saveQuiet(courseId) {
     invalidateNodeCache();
     invalidateTasksCache();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(State.data));
     localStorage.setItem(STORAGE_KEY + '_expanded', JSON.stringify(State.expandedIds));
     flashSaveIndicator();
+    if (courseId) {
+        const node   = findNode(State.data, courseId);
+        const parent = findParent(State.data, courseId);
+        if (node) {
+            const siblings = parent ? (parent.children || []) : State.data;
+            Cloud.saveNode(node, parent ? parent.id : null, siblings.indexOf(node));
+        }
+    }
     clearTimeout(_treeRenderTimer);
     _treeRenderTimer = setTimeout(() => {
         const today = dateStr(new Date());
@@ -3145,8 +3155,20 @@ async function startAppForUser(user) {
     initApp();
 }
 
+function updateCloudStatusDot(status) {
+    const dot = document.getElementById('cloudStatusDot');
+    if (!dot) return;
+    dot.classList.remove('cs-idle', 'cs-saving', 'cs-saved', 'cs-error');
+    if (status === 'saving')      { dot.classList.add('cs-saving'); dot.title = 'Synchronisation en cours…'; }
+    else if (status === 'error')  { dot.classList.add('cs-error');  dot.title = 'Erreur de synchronisation — clique pour réessayer'; }
+    else if (status === 'saved')  { dot.classList.add('cs-saved');  dot.title = 'Synchronisé avec le cloud'; }
+    else                          { dot.classList.add('cs-idle');   dot.title = 'En attente'; }
+}
+
 async function boot() {
     await Cloud.init();
+    Cloud.onStatusChange(updateCloudStatusDot);
+    document.getElementById('cloudStatusDot')?.addEventListener('click', () => Cloud.retry());
 
     Cloud.onAuthChange(async (user) => {
         if (user) {
