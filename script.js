@@ -241,6 +241,11 @@ function parseIntervals(str) {
     return str.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x) && x >= 0);
 }
 
+function extractInt(str) {
+    const digits = String(str || '').replace(/[^0-9]/g, '');
+    return digits ? parseInt(digits, 10) : NaN;
+}
+
 function escHtml(s) {
     return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
 }
@@ -856,17 +861,22 @@ dot.style.transition = 'transform 0.2s, box-shadow 0.2s';
         label.textContent = node.name;
 
         const badge = el('span', 'course-badge');
-        const diff  = daysDiff(new Date(node.j0 + 'T00:00:00'), new Date());
-        badge.textContent = `J${diff}`;
-        const todayStr = dateStr(new Date());
-        const hasDueToday = (node.intervals || DEFAULT_INTERVALS).some(jVal => {
-            const j0d = new Date(node.j0 + 'T00:00:00');
-            const custom = (node.customIntervals || {})[jVal];
-            const offset = custom !== undefined ? custom : jVal;
-            const d2 = new Date(j0d); d2.setDate(d2.getDate() + offset);
-            return dateStr(d2) === todayStr && !(node.doneTasks || []).includes(jVal);
-        });
-        if (hasDueToday) badge.classList.add('due-today');
+        if (node.j0) {
+            const diff = daysDiff(new Date(node.j0 + 'T00:00:00'), new Date());
+            badge.textContent = `J${diff}`;
+            const todayStr = dateStr(new Date());
+            const hasDueToday = (node.intervals || DEFAULT_INTERVALS).some(jVal => {
+                const j0d = new Date(node.j0 + 'T00:00:00');
+                const custom = (node.customIntervals || {})[jVal];
+                const offset = custom !== undefined ? custom : jVal;
+                const d2 = new Date(j0d); d2.setDate(d2.getDate() + offset);
+                return dateStr(d2) === todayStr && !(node.doneTasks || []).includes(jVal);
+            });
+            if (hasDueToday) badge.classList.add('due-today');
+        } else {
+            badge.textContent = 'Sans date';
+            badge.classList.add('no-date');
+        }
 
         row.appendChild(dot);
         row.appendChild(label);
@@ -1586,7 +1596,7 @@ function initDatePicker(inputId) {
             const iS   = sel && date.getTime() === sel.getTime();
             h += `<button class="dp-day${iT?' dp-today':''}${iS?' dp-selected':''}" data-val="${ds}">${d}</button>`;
         }
-        h += `</div><div class="dp-footer"><button class="dp-today-btn">Aujourd'hui</button></div>`;
+        h += `</div><div class="dp-footer"><button class="dp-today-btn">Aujourd'hui</button><button class="dp-clear-btn">Aucune date</button></div>`;
 
         popup.innerHTML = h;
         popup.querySelector('.dp-prev').onclick = e => { e.stopPropagation(); vM--; if(vM<0){vM=11;vY--;} build(); };
@@ -1595,6 +1605,10 @@ function initDatePicker(inputId) {
             e.stopPropagation();
             const t = new Date(); vY = t.getFullYear(); vM = t.getMonth();
             input.value = dateStr(t); updateDisplay(); popup.classList.remove('visible'); build();
+        };
+        popup.querySelector('.dp-clear-btn').onclick = e => {
+            e.stopPropagation();
+            input.value = ''; updateDisplay(); popup.classList.remove('visible'); build();
         };
         popup.querySelectorAll('.dp-day').forEach(b => {
             b.onclick = e => { e.stopPropagation(); input.value = b.dataset.val; updateDisplay(); popup.classList.remove('visible'); build(); };
@@ -1646,7 +1660,7 @@ function syncIntervalInput(inputId) {
 
 function addCustomInterval(prefix) {
     const inputEl = document.getElementById(prefix + 'CustomInterval');
-    const val     = parseInt(inputEl?.value);
+    const val     = extractInt(inputEl?.value);
     if (isNaN(val) || val < 0 || val > 999) return;
     _activeIntervals.add(val);
     inputEl.value = '';
@@ -1811,10 +1825,18 @@ function setSortMode(mode) {
 }
 
 function renderSettingsPresets() {
-    const row = document.getElementById('settingsPresetsRow');
+    const row = document.getElementById('settingsProfilesList');
     if (!row) return;
     row.innerHTML = '';
-    getUserProfiles().forEach(profile => {
+    const profiles = getUserProfiles();
+    if (!profiles.length) {
+        const empty = el('span');
+        empty.style.cssText = 'font-size:11px;color:var(--text-3);font-style:italic;padding:4px 2px;';
+        empty.textContent = 'Aucun profil enregistré pour le moment.';
+        row.appendChild(empty);
+        return;
+    }
+    profiles.forEach(profile => {
         const wrap = el('div');
         wrap.style.cssText = 'display:inline-flex;align-items:center;margin:0 4px 4px 0;';
         const btn = el('button', 'interval-chip');
@@ -1829,11 +1851,6 @@ function renderSettingsPresets() {
         wrap.appendChild(btn); wrap.appendChild(del);
         row.appendChild(wrap);
     });
-    const saveBtn = el('button', 'interval-chip');
-    saveBtn.textContent = '+ Sauvegarder comme profil';
-    saveBtn.style.cssText = 'border-style:dashed;color:var(--accent);border-color:rgba(107,140,255,0.4);margin-bottom:4px;';
-    saveBtn.onclick = e => { e.preventDefault(); showSaveProfilePopup(); };
-    row.appendChild(saveBtn);
 }
 
 function showSaveProfilePopup() {
@@ -1899,7 +1916,7 @@ function renderSettingsChips() {
 
 function settingsAddInterval() {
     const inp = document.getElementById('settingsAddInterval');
-    const v = parseInt(inp?.value);
+    const v = extractInt(inp?.value);
     if (isNaN(v) || v < 0) return;
     _settingsIntervals.add(v);
     inp.value = '';
@@ -2019,7 +2036,7 @@ function submitCourse() {
     const name      = document.getElementById('courseName').value.trim();
     const date      = document.getElementById('courseDate').value;
     const intervals = document.getElementById('courseIntervals').value;
-    if (!name || !date) { toast('Nom et date requis', 'error'); return; }
+    if (!name) { toast('Nom requis', 'error'); return; }
     if (parseIntervals(intervals).length === 0) { toast('Au moins un intervalle requis', 'error'); return; }
     const _cTarget = State.addingToFolderId
         ? (() => { const f = findNode(State.data, State.addingToFolderId); return (f && f.children) ? f.children : State.data; })()
@@ -2029,7 +2046,7 @@ function submitCourse() {
         id:              uuid(),
         name,
         type:            'course',
-        j0:              date,
+        j0:              date || null,
         color:           State.selectedColor,
         link:            document.getElementById('courseLink').value.trim() || null,
         notes:           document.getElementById('courseNotes').value.trim() || null,
@@ -2043,7 +2060,7 @@ function submitCourse() {
     closeModal('courseModal');
     addToHistory(`Cours "${name}" créé`);
     save();
-    toast('Cours créé', 'success');
+    toast(date ? 'Cours créé' : 'Cours créé sans date — ajoute-le au calendrier plus tard', 'success');
 }
 
 function openEditFolder(id) {
@@ -2121,7 +2138,7 @@ function openEditCourse(id) {
     if (!course) return;
 
     document.getElementById('editCourseName').value = course.name;
-    document.getElementById('editCourseDate').value = course.j0 || dateStr(new Date());
+    document.getElementById('editCourseDate').value = course.j0 || '';
 
     initDatePicker('editCourseDate');
     const dp = document.getElementById('editCourseDate');
@@ -2140,8 +2157,14 @@ if (removeBtn) removeBtn.style.display = course.j0 ? '' : 'none';
 function saveEditCourse() {
     const course = findNode(State.data, State.editingId);
     if (!course) return;
+    const newDate = document.getElementById('editCourseDate').value || null;
+    if (course.j0 && !newDate) {
+        course.doneTasks = [];
+        course.customIntervals = {};
+        course.ratings = {};
+    }
     course.name      = document.getElementById('editCourseName').value.trim();
-    course.j0        = document.getElementById('editCourseDate').value || null;
+    course.j0        = newDate;
     course.intervals = parseIntervals(document.getElementById('editCourseIntervals').value);
     course.color     = State.selectedColor;
     course.link      = document.getElementById('editCourseLink').value.trim() || null;
@@ -2232,6 +2255,8 @@ function openGotoDatePicker() {
     const base = new Date(State.currentMonday);
     vY = base.getFullYear(); vM = base.getMonth();
 
+    const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
     function build() {
         const today = new Date(); today.setHours(0,0,0,0);
         const dim   = new Date(vY, vM + 1, 0).getDate();
@@ -2239,10 +2264,18 @@ function openGotoDatePicker() {
         const bl    = fd === 0 ? 6 : fd - 1;
         const mlbl  = new Date(vY, vM).toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
 
-        let h = `<div class="dp-header">
-            <button class="dp-nav dp-prev">‹</button>
+        let h = `<div class="dp-quickjump">
+            <select class="dp-jump-month">${MONTHS_FR.map((m,i) => `<option value="${i}"${i===vM?' selected':''}>${m}</option>`).join('')}</select>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" class="dp-jump-year" value="${vY}" maxlength="4" placeholder="Année">
+            <button class="dp-quickjump-btn">Aller</button>
+        </div>`;
+
+        h += `<div class="dp-header">
+            <button class="dp-nav dp-pyear" title="Année précédente">«</button>
+            <button class="dp-nav dp-prev" title="Mois précédent">‹</button>
             <span class="dp-month">${mlbl}</span>
-            <button class="dp-nav dp-next">›</button>
+            <button class="dp-nav dp-next" title="Mois suivant">›</button>
+            <button class="dp-nav dp-nyear" title="Année suivante">»</button>
         </div><div class="dp-grid">
             <span class="dp-dow">Lu</span><span class="dp-dow">Ma</span><span class="dp-dow">Me</span>
             <span class="dp-dow">Je</span><span class="dp-dow">Ve</span><span class="dp-dow">Sa</span><span class="dp-dow">Di</span>`;
@@ -2257,8 +2290,23 @@ function openGotoDatePicker() {
         h += `</div><div class="dp-footer"><button class="dp-today-btn">Aujourd'hui</button></div>`;
 
         popup.innerHTML = h;
-        popup.querySelector('.dp-prev').onclick = e => { e.stopPropagation(); vM--; if(vM<0){vM=11;vY--;} build(); };
-        popup.querySelector('.dp-next').onclick = e => { e.stopPropagation(); vM++; if(vM>11){vM=0;vY++;} build(); };
+
+        const jumpTo = () => {
+            const my = parseInt(popup.querySelector('.dp-jump-year').value.replace(/[^0-9]/g, ''), 10);
+            const mm = parseInt(popup.querySelector('.dp-jump-month').value, 10);
+            if (isNaN(my) || my < 1) return;
+            vY = my; vM = mm; build();
+        };
+
+        popup.querySelector('.dp-quickjump-btn').onclick = e => { e.stopPropagation(); jumpTo(); };
+        popup.querySelector('.dp-jump-year').onkeydown = e => { if (e.key === 'Enter') { e.stopPropagation(); jumpTo(); } };
+        popup.querySelector('.dp-jump-year').onclick = e => e.stopPropagation();
+        popup.querySelector('.dp-jump-month').onclick = e => e.stopPropagation();
+
+        popup.querySelector('.dp-pyear').onclick = e => { e.stopPropagation(); vY--; build(); };
+        popup.querySelector('.dp-nyear').onclick = e => { e.stopPropagation(); vY++; build(); };
+        popup.querySelector('.dp-prev').onclick  = e => { e.stopPropagation(); vM--; if(vM<0){vM=11;vY--;} build(); };
+        popup.querySelector('.dp-next').onclick  = e => { e.stopPropagation(); vM++; if(vM>11){vM=0;vY++;} build(); };
         popup.querySelector('.dp-today-btn').onclick = e => {
             e.stopPropagation();
             goToDate(dateStr(new Date()));
@@ -2272,7 +2320,7 @@ function openGotoDatePicker() {
 
     const rect = btn.getBoundingClientRect();
     popup.style.top  = (rect.bottom + 6) + 'px';
-    popup.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 260)) + 'px';
+    popup.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 270)) + 'px';
 
     setTimeout(() => {
         _gotoDismiss = e => {
@@ -2584,6 +2632,7 @@ function isInFolder(courseId, folderId) {
 function openCourseTimeline(courseId) {
     const course = findNode(State.data, courseId);
     if (!course) return;
+    if (!course.j0) { toast("Ce cours n'a pas encore de date — ajoute un J0 pour voir sa timeline", 'error'); return; }
     const titleEl   = document.getElementById('timelineTitle');
     const iconEl    = document.getElementById('timelineIcon');
     const content   = document.getElementById('timelineContent');
@@ -2602,7 +2651,6 @@ function openCourseTimeline(courseId) {
     let html = `<div style="margin-bottom:14px;padding:9px 12px;background:var(--surface-2);border:1px solid var(--border);border-left:3px solid ${course.color||'var(--accent)'};border-radius:0 var(--radius) var(--radius) 0;font-size:12px;color:var(--text-2);">
         J0 — ${j0.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
     </div>`;
-    if (!course.j0) return;
     intervals.forEach(jVal => {
         const custom = (course.customIntervals||{})[jVal];
         const offset = custom !== undefined ? custom : jVal;
