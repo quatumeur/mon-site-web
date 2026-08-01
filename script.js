@@ -337,14 +337,41 @@ function clearSearch() {
     if (si) { si.value = ''; si.dispatchEvent(new Event('input')); si.focus(); }
     if (clr) clr.style.display = 'none';
 }
-function toggleTheme() {
-    const isLight = document.body.classList.toggle('light');
-    localStorage.setItem('fififi_theme', isLight ? 'light' : 'dark');
+function applyThemeMode(mode) {
+    let isLight;
+    if (mode === 'light') isLight = true;
+    else if (mode === 'dark') isLight = false;
+    else isLight = !!(window.matchMedia && !window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.body.classList.toggle('light', isLight);
+}
+
+function getThemeMode() {
+    return localStorage.getItem('fififi_themeMode') || (localStorage.getItem('fififi_theme') === 'light' ? 'light' : 'auto');
+}
+
+function setThemeMode(mode) {
+    localStorage.setItem('fififi_themeMode', mode);
+    applyThemeMode(mode);
+    renderThemeModeButtons();
+}
+
+function renderThemeModeButtons() {
+    const mode = getThemeMode();
+    ['light', 'dark', 'auto'].forEach(m => {
+        const btn = document.getElementById('themeMode_' + m);
+        if (btn) btn.classList.toggle('active', m === mode);
+    });
 }
 
 (function() {
-    if (localStorage.getItem('fififi_theme') === 'light')
-        document.body.classList.add('light');
+    const mode = getThemeMode();
+    localStorage.setItem('fififi_themeMode', mode);
+    applyThemeMode(mode);
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (getThemeMode() === 'auto') applyThemeMode('auto');
+        });
+    }
 })();
 
 function toggleSidebar() {
@@ -854,6 +881,7 @@ function createTreeNode(node, level, forceExpand = false) {
 
         const dot = el('span', 'folder-dot');
         dot.style.background = node.color || COLORS[0];
+        dot.style.transition = 'transform 0.2s, box-shadow 0.2s';
 
         if (State.filterFolderId === node.id) {
     dot.style.boxShadow = `0 0 0 2px var(--bg), 0 0 0 4px ${node.color || COLORS[0]}`;
@@ -885,6 +913,17 @@ function createTreeNode(node, level, forceExpand = false) {
         editBtn.onclick = (e) => { e.stopPropagation(); openEditFolder(node.id); };
         row.appendChild(editBtn);
 
+        const filterBtn = el('button', 'tree-node-edit-btn' + (State.filterFolderId === node.id ? ' active' : ''));
+        filterBtn.textContent = '⬡';
+        filterBtn.title = 'Filtrer le calendrier sur ce dossier';
+        filterBtn.onclick = (e) => {
+            e.stopPropagation();
+            State.filterFolderId = State.filterFolderId === node.id ? null : node.id;
+            renderTree();
+            renderCalendar();
+        };
+        row.appendChild(filterBtn);
+
         row.onclick = (e) => {
             e.stopPropagation();
             if (State.searchQuery.trim()) {
@@ -898,16 +937,6 @@ function createTreeNode(node, level, forceExpand = false) {
             }
             renderTree();
         };
-
-dot.onclick = (e) => {
-    e.stopPropagation();
-    State.filterFolderId = State.filterFolderId === node.id ? null : node.id;
-    renderTree();
-    renderCalendar();
-};
-dot.title = 'Filtrer le calendrier';
-dot.style.cursor = 'pointer';
-dot.style.transition = 'transform 0.2s, box-shadow 0.2s';
 
     } else {
         row.classList.add('is-course');
@@ -1246,6 +1275,11 @@ card.ondrop = (e) => {
     const di = order.indexOf(dropKey);
     if (di === -1) return;
     order.splice(before ? di : di + 1, 0, dragKey);
+
+    const _currentOrder = dayTasks.map(_tkk);
+    const _unchanged = _currentOrder.length === order.length && _currentOrder.every((k, i) => k === order[i]);
+    if (_unchanged) { State.draggedTask = null; return; }
+
     addToHistory(`Ordre du ${ds} mis à jour`);
     State.dayOrders[ds] = order;
     State.draggedTask = null;
@@ -1931,6 +1965,7 @@ function randomizeChildColors(folderId) {
 let _settingsIntervals = new Set();
 
 function openSettings() {
+    renderThemeModeButtons();
     renderSettingsPresets();
     const chk = document.getElementById('sortFolderCheck');
     if (chk) chk.checked = State.sortMode === 'folder';

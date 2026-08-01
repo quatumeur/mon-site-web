@@ -350,6 +350,17 @@ body::before {
     flex-shrink: 0; padding: 0;
 }
 .tree-node:hover .tree-node-edit-btn { opacity: 1; }
+
+@media (hover: none) {
+    .tree-node-edit-btn { opacity: 1; }
+}
+.tree-node-edit-btn.active {
+    opacity: 1;
+    color: var(--accent);
+    border-color: rgba(107,140,255,0.35);
+    background: var(--accent-glow);
+}
+
 .tree-node-edit-btn:hover {
     background: var(--surface-3);
     border-color: var(--border);
@@ -1142,6 +1153,23 @@ input[type="date"].form-input {
     .calendar.week {
         grid-template-columns: repeat(3, 1fr);
     }
+    .topbar {
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .topbar::-webkit-scrollbar { display: none; }
+    .topbar-left, .toolbar { flex-shrink: 0; }
+    .date-label { min-width: 130px; }
+
+    .status-filter-bar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .status-filter-bar::-webkit-scrollbar { display: none; }
+    .status-filter-bar > * { flex-shrink: 0; }
 }
 
 @media (max-width: 600px) {
