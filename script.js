@@ -692,7 +692,7 @@ function showContextMenu(e, node) {
     if (node.type === 'folder') {
         const sep = el('div', 'ctx-sep');
         menu.appendChild(sep);
-        menu.appendChild(ctxItem('✦', 'Ajouter un cours', () => addCourse(node.id)));
+        menu.appendChild(ctxItem('✷', 'Ajouter un cours', () => addCourse(node.id)));
         menu.appendChild(ctxItem('▣', 'Ajouter un sous-dossier', () => addFolder(node.id)));
         menu.appendChild(ctxItem('🎨', 'Couleurs aléatoires (enfants)', () => randomizeChildColors(node.id)));
         menu.appendChild(el('div', 'ctx-sep'));
@@ -2055,7 +2055,7 @@ function openProfileEditor(profileName = null) {
             <div>${existing ? `<button class="btn btn-danger" id="peDeleteBtn">Supprimer</button>` : ''}</div>
             <div style="display:flex;gap:8px;">
                 <button class="btn btn-ghost" id="peCancelBtn">Annuler</button>
-                <button class="btn btn-primary" id="peSaveBtn"><span class="btn-icon">✦</span>Sauvegarder</button>
+                <button class="btn btn-primary" id="peSaveBtn"><span class="btn-icon">✷</span>Sauvegarder</button>
             </div>
         </div>
     `;
@@ -3170,7 +3170,7 @@ function initApp() {
         });
     })();
 
-    console.log('%Fififi ready ✦', 'color:#06c8e8;font-family:monospace;font-weight:bold;font-size:14px');
+    console.log('%Fififi ready ✷', 'color:#06c8e8;font-family:monospace;font-weight:bold;font-size:14px');
 }
 
 function updateUserBadge(user) {
