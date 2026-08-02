@@ -27,7 +27,7 @@ const Cloud = (() => {
             const { data, error } = await fn();
             if (!error) return { data, error: null };
             lastError = error;
-            if (i < attempts - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
+            if (i < attempts - 1) await new Promise(r => setTimeout(r, 300 * (i + 1)));
         }
         return { data: null, error: lastError };
     }
