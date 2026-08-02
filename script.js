@@ -1142,6 +1142,7 @@ document.addEventListener('dragend', () => {
     _navDragTimer = null;
     document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
     document.querySelectorAll('.drag-over, .drop-before, .drop-after').forEach(el => el.classList.remove('drag-over', 'drop-before', 'drop-after'));
+    if (_pendingRemoteRefresh && !document.querySelector('.modal.open')) applyRemoteRefresh();
 });
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('dragover', e => {
@@ -2205,6 +2206,7 @@ function closeModal(id) {
     setTimeout(() => {
         modal.classList.remove('open');
         if (card) { card.style.opacity = ''; card.style.transform = ''; }
+        if (_pendingRemoteRefresh && !document.querySelector('.modal.open')) applyRemoteRefresh();
     }, 150);
 }
 
@@ -3084,6 +3086,26 @@ let _treeRenderTimer = null;
 let _saveTimer = null;
 let _toggleUndoTimer = null;
 
+let _remoteDebounce = null;
+let _pendingRemoteRefresh = false;
+
+function scheduleRemoteRefresh() {
+    clearTimeout(_remoteDebounce);
+    _remoteDebounce = setTimeout(applyRemoteRefresh, 600);
+}
+
+async function applyRemoteRefresh() {
+    const busy = document.querySelector('.modal.open') || State.draggedTask || State.draggedNode;
+    if (busy) { _pendingRemoteRefresh = true; return; }
+    _pendingRemoteRefresh = false;
+    State.data = await Cloud.loadTree();
+    invalidateNodeCache();
+    invalidateTasksCache();
+    renderTree();
+    renderCalendar();
+    updateUndoRedoButtons();
+}
+
 let _renderRafId = null;
 function scheduleRender(tree, calendar) {
     cancelAnimationFrame(_renderRafId);
@@ -3577,6 +3599,7 @@ async function startAppForUser(user) {
     State.data = await Cloud.loadTree();
     loadLocalPrefs();
     initApp();
+    Cloud.subscribeRealtime();
 }
 
 function updateCloudStatusDot(status) {
@@ -3594,6 +3617,7 @@ function wireCloudStatus() {
     if (_statusWired) return;
     _statusWired = true;
     Cloud.onStatusChange(updateCloudStatusDot);
+    Cloud.onRemoteChange(scheduleRemoteRefresh);
     document.getElementById('cloudStatusDot')?.addEventListener('click', () => Cloud.retry());
 }
 

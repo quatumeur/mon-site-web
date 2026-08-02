@@ -215,9 +215,32 @@ const Cloud = (() => {
         toast('Données locales migrées vers le cloud ✓', 'success');
     }
 
+    let _channel = null;
+    let _remoteListeners = [];
+
+    function onRemoteChange(cb) { _remoteListeners.push(cb); }
+    function _notifyRemote() { _remoteListeners.forEach(cb => cb()); }
+
+    function subscribeRealtime() {
+        if (!_user || _channel) return;
+        _channel = sb.channel('j_items_' + _user.id)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'j_items',
+                filter: `user_id=eq.${_user.id}`,
+            }, () => { _notifyRemote(); })
+            .subscribe();
+    }
+
+    function unsubscribeRealtime() {
+        if (_channel) { sb.removeChannel(_channel); _channel = null; }
+    }
+
     return {
         init, getUser, onAuthChange, signInWithDiscord, signOut,
         loadTree, saveTree, saveNode, migrateLocalIfNeeded,
         getStatus, onStatusChange, retry,
+        onRemoteChange, subscribeRealtime, unsubscribeRealtime,
     };
 })();
