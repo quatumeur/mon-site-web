@@ -4,6 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>fififi</title>
+
+    <!-- 🖼️ Logo de l'onglet -->
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/favicon.png">
+
+    <!-- 📲 Preview Discord & WhatsApp -->
+    <meta property="og:site_name" content="fififi">
+    <meta property="og:title" content="fififi">
+    <meta property="og:description" content="Connecte-toi pour accéder à tes cours et à tes révisions.">
+    <meta property="og:url" content="https://www.blyron.com">
+    <meta property="og:image" content="https://www.blyron.com/preview-card.png">
+    <meta property="og:type" content="website">
+    <meta name="theme-color" content="#6b8cff">
+
+    <!-- 🖋️ Fonts & Stylesheets (Ton code existant) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -14,7 +29,7 @@
     <!-- AUTH GATE -->
     <div class="auth-gate" id="authGate">
         <div class="auth-card">
-            <div class="auth-logo">✦</div>
+            <div class="auth-logo">✷</div>
             <h1 class="auth-title">fififi</h1>
             <p class="auth-sub">Connecte-toi pour accéder à tes cours et à tes révisions, synchronisés sur tous tes appareils.</p>
             <button class="btn btn-discord" onclick="Cloud.signInWithDiscord()">
@@ -59,7 +74,7 @@
                 Dossier
             </button>
             <button class="btn btn-primary" onclick="addCourse()">
-                <span class="btn-icon">✦</span>
+                <span class="btn-icon">✷</span>
                 Cours
             </button>
         </div>
@@ -159,7 +174,7 @@
             <div class="modal-footer">
                 <button class="btn btn-ghost" onclick="closeModal('folderModal')">Annuler</button>
                 <button class="btn btn-primary" onclick="submitFolder()">
-                    <span class="btn-icon">✦</span>Créer
+                    <span class="btn-icon">✷</span>Créer
                 </button>
             </div>
         </div>
@@ -169,7 +184,7 @@
     <div class="modal" id="courseModal">
         <div class="modal-card">
             <div class="modal-header">
-                <div class="modal-icon">✦</div>
+                <div class="modal-icon">✷</div>
                 <h3 class="modal-title">Nouveau Cours</h3>
             </div>
             <div class="form-group">
@@ -210,7 +225,7 @@
             <div class="modal-footer">
                 <button class="btn btn-ghost" onclick="closeModal('courseModal')">Annuler</button>
                 <button class="btn btn-primary" onclick="submitCourse()">
-                    <span class="btn-icon">✦</span>Créer
+                    <span class="btn-icon">✷</span>Créer
                 </button>
             </div>
         </div>
@@ -246,7 +261,7 @@
     <div class="modal" id="editCourseModal">
         <div class="modal-card" style="width:480px">
             <div class="modal-header">
-                <div class="modal-icon">✦</div>
+                <div class="modal-icon">✷</div>
                 <h3 class="modal-title">Éditer Cours</h3>
             </div>
             <div class="form-group">
@@ -384,7 +399,7 @@
 </div>
         <div class="modal-footer">
             <button class="btn btn-ghost" onclick="closeModal('settingsModal')">Fermer</button>
-            <button class="btn btn-primary" onclick="saveSettings()"><span class="btn-icon">✦</span>Sauvegarder</button>
+            <button class="btn btn-primary" onclick="saveSettings()"><span class="btn-icon">✷</span>Sauvegarder</button>
         </div>
     </div>
 </div>
